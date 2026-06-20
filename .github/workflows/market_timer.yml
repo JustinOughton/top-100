@@ -2,9 +2,12 @@ name: Option C Market Cloud Engine
 
 on:
   schedule:
+    # Automated times for weekdays:
+    # 1. Runs every hour on the hour during US market hours (14:00 to 21:00 UTC)
     - cron: '0 14-21 * * 1-5'
+    # 2. Runs once daily right after market close (21:30 UTC / 4:30 PM EST)
     - cron: '30 21 * * 1-5'
-  workflow_dispatch:
+  workflow_dispatch: # Allows you to manually click "Run workflow" from your phone anytime
 
 jobs:
   run-market-engine:
@@ -21,19 +24,19 @@ jobs:
     - name: Install Data Libraries
       run: pip install pandas yfinance numpy requests
 
-    - name: Force Initial Setup Run
-      run: |
-        python script.py --rebalance
-        python script.py
+    # This runs the 24-hour market rebalance to build your master ticker list immediately
+    - name: Force Universe Rebalance Setup
+      run: python script.py --rebalance
 
+    # This reads the newly built list and instantly renders your alternating HTML table
+    - name: Run Initial Matrix Update
+      run: python script.py
+
+    # Saves all newly generated data files and dashboards back to your repository
     - name: Save and Commit Updated Outputs
       run: |
         git config --global user.name "Option-C-Cloud-Bot"
         git config --global user.email "bot@optionc.internal"
-        
-        # This line forces a blank placeholder dashboard if it's missing on weekends
-        if [ ! -f market_dashboard.html ]; then echo "<h1>Option C Market Closed - Standby for Monday Open</h1>" > market_dashboard.html; fi
-        
         git add -A
-        git commit -m "Automated Sync: Initialization run complete" || true
+        git commit -m "Automated Sync: Initial table setup complete" || true
         git push || true
