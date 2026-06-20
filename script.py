@@ -198,7 +198,7 @@ def generate_html_dashboard(df):
     with open(HTML_DASHBOARD_FILE, "w", encoding="utf-8") as f:
         f.write(html_content)
 
- def hourly_rank_update():
+def hourly_rank_update():
     if not os.path.exists(TICKER_LIST_FILE):
         rebalance_ticker_universe()
     active_tickers = pd.read_csv(TICKER_LIST_FILE)["Ticker"].tolist()
