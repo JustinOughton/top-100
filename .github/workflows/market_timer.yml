@@ -33,11 +33,11 @@ jobs:
       if: github.event.schedule != '30 21 * * 1-5'
       run: python script.py
 
-    # Automatically save and push the updated CSV, HTML table, and TXT report back to your repository
+    # Automatically save and push updated assets back to your repository
     - name: Save and Commit Updated Outputs
       run: |
         git config --global user.name "Option-C-Cloud-Bot"
         git config --global user.email "bot@optionc.internal"
-        git add active_100_tickers.csv current_ai_rankings.csv market_dashboard.html daily_market_close_report.txt
-        git commit -m "Automated Sync: Cloud data layer metrics refreshed" || exit 0
-        git push
+        git add active_100_tickers.csv current_ai_rankings.csv market_dashboard.html daily_market_close_report.txt || true
+        git commit -m "Automated Sync: Cloud data layer metrics refreshed" || true
+        git push || true
