@@ -1,3 +1,5 @@
+# NEW SCRiPT
+
 import datetime
 import json
 import os
@@ -35,6 +37,7 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100.0 - (100.0 / (1.0 + rs))
     return rsi[-1]
 
+
 def get_master_universe():
     return [
         "WULF", "INOD", "SOUN", "QUBT", "ACMR", "POET", "ATOM", "LWLG", 
@@ -63,23 +66,40 @@ def generate_html_dashboard(df):
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #121212; color: #ffffff; margin: 10px; padding: 0; }}
         .container {{ width: 100%; max-width: 1100px; margin: 0 auto; }}
         h2 {{ text-align: center; color: #ffffff; font-weight: 400; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }}
-        .time {{ text-align: center; color: #888888; font-size: 12px; margin-bottom: 20px; }}
+        
+        .clock-panel {{ display: flex; justify-content: space-around; background-color: #000000; border: 1px solid #333333; padding: 15px; margin-bottom: 20px; border-radius: 6px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.5); }}
+        .clock-box {{ flex: 1; }}
+        .clock-label {{ font-size: 11px; color: #888888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }}
+        .clock-time {{ font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace; }}
+        
         table {{ width: 100%; border-collapse: collapse; background-color: #ffffff; color: #000000; box-shadow: 0 4px 10px rgba(0,0,0,0.4); font-size: 14px; }}
         th {{ background-color: #000000; color: #ffffff; padding: 14px 10px; text-align: left; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; border-bottom: 2px solid #333333; }}
         td {{ padding: 12px 10px; border-bottom: 1px solid #e0e0e0; }}
+        
         .row-white {{ background-color: #ffffff; color: #000000; }}
         .row-black {{ background-color: #000000; color: #ffffff; border-bottom: 1px solid #222222; }}
-        .spring-highlight {{ background-color: #00cc44 !important; color: #000000 !important; font-weight: bold; }}
-        .badge {{ padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; display: inline-block; text-transform: uppercase; }}
-        .badge-buy {{ background-color: #00cc44; color: #000000; }}
-        .badge-sell {{ background-color: #ff3333; color: #ffffff; }}
-        .badge-hold {{ background-color: #555555; color: #ffffff; }}
+        
+        /* Premium Custom High-Contrast Highlights */
+        .spring-highlight {{ background-color: #1a5f20 !important; color: #ffffff !important; font-weight: bold; }}      /* Dark Green + White text */
+        .signal-orange-highlight {{ background-color: #ffb84d !important; color: #000000 !important; font-weight: bold; }} /* Light Orange + Black text */
+        .signal-red-highlight {{ background-color: #ff3333 !important; color: #000000 !important; font-weight: bold; }}    /* Bright Red + Black text */
+        
+        .badge {{ padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; display: inline-block; text-transform: uppercase; border: 1px solid rgba(0,0,0,0.2); }}
     </style>
 </head>
 <body>
     <div class="container">
         <h2>AI Processing Leaderboard</h2>
-        <div class="time">DYNAMIC INTERVAL RUN: {timestamp} (SCALED RISK EXPOSURE)</div>
+        <div class="clock-panel">
+            <div class="clock-box">
+                <div class="clock-label">Local Sydney Time (AEST)</div>
+                <div class="clock-time" id="aest-clock">--:--:--</div>
+            </div>
+            <div class="clock-box" style="border-left: 1px solid #222222;">
+                <div class="clock-label" id="countdown-label">US Market Clock</div>
+                <div class="clock-time" id="countdown-clock">--:--:--</div>
+            </div>
+        </div>
         <table>
             <thead>
                 <tr>
@@ -91,32 +111,83 @@ def generate_html_dashboard(df):
     
     for idx, row in df.iterrows():
         row_class = "row-white" if idx % 2 == 0 else "row-black"
+        
+        # Apply strict requested phase colour themes
         if row["Trading Phase"] == "🚨 READY TO SPRING":
             row_class = "spring-highlight"
-        if "SPRING" in row["Trading Phase"] or "BUY" in row["Trading Phase"]:
-            badge = f'<span class="badge badge-buy">{row["Trading Phase"]}</span>'
-        elif "SELL" in row["Trading Phase"]:
-            badge = f'<span class="badge badge-sell">{row["Trading Phase"]}</span>'
+            badge = f'<span class="badge" style="background-color: #2e7d32; color: #ffffff;">{{row["Trading Phase"]}}</span>'
+        elif row["Trading Phase"] == "🚨 BUY PHASE":
+            row_class = "signal-orange-highlight"
+            badge = f'<span class="badge" style="background-color: #ffa524; color: #000000;">{{row["Trading Phase"]}}</span>'
+        elif row["Trading Phase"] == "💥 TAKE PROFIT / SELL":
+            row_class = "signal-red-highlight"
+            badge = f'<span class="badge" style="background-color: #cc0000; color: #ffffff;">{{row["Trading Phase"]}}</span>'
         else:
-            badge = f'<span class="badge badge-hold">{row["Trading Phase"]}</span>'
+            badge = f'<span class="badge" style="background-color: #555555; color: #ffffff;">{{row["Trading Phase"]}}</span>'
 
         html_content += f"""
-                <tr class="{row_class}">
-                    <td><strong>{row['Ticker']}</strong></td><td>${row['Price ($)']:.2f}</td>
-                    <td>{row['Short Interest %']:.1f}%</td><td>{row['Days to Cover']:.1f}d</td>
-                    <td>{row['RVOL']:.2f}x</td><td>{row['RSI']:.1f}</td>
-                    <td><strong>{row['Risk_Score']:.1f}</strong></td><td>{badge}</td>
+                <tr class="{{row_class}}">
+                    <td><strong>{{row['Ticker']}}</strong></td><td>${{row['Price ($)']:.2f}}</td>
+                    <td>{{row['Short Interest %']:.1f}}%</td><td>{{row['Days to Cover']:.1f}}d</td>
+                    <td>{{row['RVOL']:.2f}x</td><td>{{row['RSI']:.1f}}</td>
+                    <td><strong>{{row['Risk_Score']:.1f}}</strong></td><td>{{badge}}</td>
                 </tr>"""
                 
     html_content += """
             </tbody>
         </table>
     </div>
+    <script>
+    function updateClocks() {
+        let now = new Date();
+        document.getElementById("aest-clock").innerText = now.toLocaleTimeString("en-AU", {timeZone: "Australia/Sydney", hour12: false});
+        let nyString = now.toLocaleString("en-US", {timeZone: "America/New_York"});
+        let nyDate = new Date(nyString);
+        let currentDay = nyDate.getDay();
+        let currentHour = nyDate.getHours();
+        let currentMinute = nyDate.getMinutes();
+        let currentSecond = nyDate.getSeconds();
+        let label = document.getElementById("countdown-label");
+        let clock = document.getElementById("countdown-clock");
+        let currentMinutesInDay = (currentHour * 60) + currentMinute;
+        let marketOpenMinutes = (9 * 60) + 30;
+        let marketCloseMinutes = (16 * 60) + 0;
+        let isWeekend = (currentDay === 0 || currentDay === 6);
+        let isMarketOpenHours = (!isWeekend && currentMinutesInDay >= marketOpenMinutes && currentMinutesInDay < marketCloseMinutes);
+
+        if (isMarketOpenHours) {
+            label.innerText = "Time Until Close (Market Open)";
+            label.style.color = "#00cc44";
+            clock.style.color = "#00cc44";
+            let totalSecondsLeft = ((marketCloseMinutes - currentMinutesInDay) * 60) - currentSecond;
+            clock.innerText = formatTimeDuration(totalSecondsLeft);
+        } else {
+            label.innerText = "Time Until Next Open (Market Closed)";
+            label.style.color = "#ff3333";
+            clock.style.color = "#ff3333";
+            let targetDate = new Date(nyString);
+            targetDate.setHours(9, 30, 0, 0);
+            if (currentMinutesInDay >= marketCloseMinutes) targetDate.setDate(targetDate.getDate() + 1);
+            while (targetDate.getDay() === 0 || targetDate.getDay() === 6) targetDate.setDate(targetDate.getDate() + 1);
+            let diffMs = targetDate - new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
+            clock.innerText = formatTimeDuration(Math.floor(diffMs / 1000));
+        }
+    }
+    function formatTimeDuration(seconds) {
+        let h = Math.floor(seconds / 3600);
+        let m = Math.floor((seconds % 3600) / 60);
+        let s = seconds % 60;
+        return [h.toString().padStart(2, '0'), m.toString().padStart(2, '0'), s.toString().padStart(2, '0')].join(':');
+    }
+    setInterval(updateClocks, 1000);
+    updateClocks();
+    </script>
 </body>
 </html>"""
     with open(HTML_DASHBOARD_FILE, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("📊 Dashboard successfully updated.")
+    print("📊 Dashboard visual formatting layout updated successfully.")
+
 
 def hourly_rank_update():
     print("🕒 Accessing Active 100 Network Array for Hourly Update...")
@@ -167,28 +238,11 @@ def hourly_rank_update():
         except Exception:
             continue
 
-   if not valid_data:
-    # Fallback backup engine: If live streams are empty, load yesterday's data instead
-    print("⚠️ Markets closed. Fetching last recorded closing data layer...")
-    yf.download("INOD WULF SOUN", period="1d") # Bootstraps network cache
-    market_history = yf.download(" ".join(get_master_universe()), period="30d", group_by="ticker", progress=False)
-    for ticker in get_master_universe():
-        try:
-            history = market_history[ticker].dropna()
-            if not history.empty:
-                valid_data.append({
-                    "Ticker": ticker, "Price ($)": history["Close"].iloc[-1], "Short Interest %": 15.0,
-                    "Days to Cover": 4.5, "RVOL": 1.2, "RSI": 50.0, "Trading Phase": "HOLD / ACCUMULATE", "Risk_Score": 25.0
-                })
-        except: continue
-    df_output = pd.DataFrame(valid_data)
-
-df_output = pd.DataFrame(valid_data) if valid_data else pd.DataFrame()
-if not df_output.empty:
-    df_output = df_output.sort_values(by="Risk_Score", ascending=True).reset_index(drop=True)
-    df_output.to_csv(OUTPUT_RANKINGS_FILE, index=False)
-    generate_html_dashboard(df_output)
-
+    if valid_data:
+        df_output = pd.DataFrame(valid_data)
+        df_output = df_output.sort_values(by="Risk_Score", ascending=True).reset_index(drop=True)
+        df_output.to_csv(OUTPUT_RANKINGS_FILE, index=False)
+        generate_html_dashboard(df_output)
 
 def rebalance_ticker_universe():
     print("🔄 Initialising End of Session Processing Operations...")
@@ -242,4 +296,3 @@ if __name__ == "__main__":
         rebalance_ticker_universe()
     else:
         hourly_rank_update()
-
