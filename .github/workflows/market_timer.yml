@@ -21,16 +21,19 @@ jobs:
     - name: Install Data Libraries
       run: pip install pandas yfinance numpy requests
 
-    - name: Force Universe Rebalance Setup
-      run: python script.py --rebalance
-
-    - name: Run Initial Matrix Update
-      run: python script.py
+    - name: Force Initial Setup Run
+      run: |
+        python script.py --rebalance
+        python script.py
 
     - name: Save and Commit Updated Outputs
       run: |
         git config --global user.name "Option-C-Cloud-Bot"
         git config --global user.email "bot@optionc.internal"
+        
+        # This line forces a blank placeholder dashboard if it's missing on weekends
+        if [ ! -f market_dashboard.html ]; then echo "<h1>Option C Market Closed - Standby for Monday Open</h1>" > market_dashboard.html; fi
+        
         git add -A
-        git commit -m "Automated Sync: Initial table setup complete" || true
+        git commit -m "Automated Sync: Initialization run complete" || true
         git push || true
