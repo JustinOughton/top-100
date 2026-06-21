@@ -21,14 +21,12 @@ jobs:
     - name: Install Data Libraries
       run: pip install pandas yfinance numpy requests
 
-    # Back to running script.py directly
     - name: Force Universe Rebalance Setup
       run: python script.py --rebalance
 
     - name: Run Initial Matrix Update
       run: python script.py
 
-    # Weekend-proof saving logic
     - name: Save and Commit Updated Outputs
       run: |
         git config --global user.name "Option-C-Cloud-Bot"
