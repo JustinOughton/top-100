@@ -203,9 +203,12 @@ def hourly_rank_update():
         rebalance_ticker_universe()
     active_tickers = pd.read_csv(TICKER_LIST_FILE)["Ticker"].tolist()
     valid_data = []
+    
+    # Fetch historical data chunks to handle weekends safely
     market_history = yf.download(
         " ".join(active_tickers), period="30d", group_by="ticker", progress=False
     )
+    
     for ticker in active_tickers:
         try:
             stock = yf.Ticker(ticker)
@@ -217,11 +220,21 @@ def hourly_rank_update():
             )
             if len(history) < 20:
                 continue
-            price = info.get("currentPrice", history["Close"].iloc[-1])
+                
+            # --- WEEKEND DATA PROTECTION GATE ---
+            # If the market is closed and live price is missing (None/0), look at final Friday close
+            price = info.get("currentPrice", 0)
+            if price is None or price == 0:
+                price = history["Close"].iloc[-1]
+                
             short_pct = info.get("shortPercentOfFloat", 0) * 100
             dtc = info.get("shortRatio", 0)
             close_prices = history["Close"].to_numpy()
+            
             current_volume = info.get("volume", history["Volume"].iloc[-1])
+            if current_volume is None or current_volume == 0:
+                current_volume = history["Volume"].iloc[-1]
+                
             avg_volume = info.get("averageVolume", history["Volume"].mean())
             rvol = current_volume / avg_volume if avg_volume > 0 else 1.0
             rsi_value = calculate_rsi(close_prices, period=14)
@@ -261,6 +274,8 @@ def hourly_rank_update():
             )
         except:
             continue
+            
+    # Force output generation even if live data is blank
     if valid_data:
         df_output = pd.DataFrame(valid_data).sort_values(
             by="Risk_Score", ascending=True
@@ -280,21 +295,30 @@ def rebalance_ticker_universe():
             stock = yf.Ticker(ticker)
             info = stock.info
             history = market_history[ticker].dropna()
-            price = info.get("currentPrice", history["Close"].iloc[-1])
+            
+            price = info.get("currentPrice", 0)
+            if price is None or price == 0:
+                price = history["Close"].iloc[-1]
+                
             if price == 0 or price > MAX_STOCK_PRICE:
                 continue
+                
             short_pct = info.get("shortPercentOfFloat", 0) * 100
             dtc = info.get("shortRatio", 0)
             close_prices = history["Close"].to_numpy()
-            rvol = (
-                info.get("volume", history["Volume"].iloc[-1])
-                / history["Volume"].mean()
-            )
+            
+            current_volume = info.get("volume", history["Volume"].iloc[-1])
+            if current_volume is None or current_volume == 0:
+                current_volume = history["Volume"].iloc[-1]
+                
+            rvol = current_volume / history["Volume"].mean()
             rsi_value = calculate_rsi(close_prices, period=14)
             sma_20 = history["Close"].tail(20).mean()
+            
             valid_companies.append(
                 {"Ticker": ticker, "Sorting_Score": short_pct * dtc}
             )
+            
             if rsi_value >= 80.0 or rvol >= 4.0:
                 daily_phase_report.append(
                     f"→ {ticker:5} | [SELL PHASE]: Overbought momentum peak."
@@ -305,12 +329,14 @@ def rebalance_ticker_universe():
                 )
         except:
             continue
+            
     df_universe = pd.DataFrame(valid_companies)
     if not df_universe.empty:
         df_universe = df_universe.sort_values(
             by="Sorting_Score", ascending=False
         ).head(100)
     df_universe[["Ticker"]].to_csv(TICKER_LIST_FILE, index=False)
+    
     with open(DAILY_REPORT_FILE, "w") as f:
         f.write(
             "=================================================================\n"
@@ -324,7 +350,6 @@ def rebalance_ticker_universe():
 
 
 def send_discord_phase_alert(ticker, phase, price, rvol, rsi, score):
-    # 🛑 PASTE YOUR SECRET WEBHOOK URL BETWEEN THE INVERTED COMMAS BELOW:
     url = "https://discord.com"
     if not url or "webhooks" not in url:
         return
