@@ -318,7 +318,7 @@ def rebalance_ticker_universe():
 
 
 def send_discord_text_report():
-    url = "PLACE WEBHOOK HERE"
+    url = "https://discord.com/api/webhooks/1517340239700562022/_aCg9ik-HyQSE50HKMXIplZ7zUp84RnEefYWEN-CDCR_GXRob9d3kRBN94e5qbaGQktb"
     if not url or "webhooks" not in url or not os.path.exists(DAILY_REPORT_FILE):
         return
     with open(DAILY_REPORT_FILE, "r", encoding="utf-8") as f:
@@ -334,7 +334,7 @@ def send_discord_text_report():
 
 
 def send_discord_phase_alert(ticker, phase, price, rvol, rsi, score):
-    url = "PLACE WEBHOOK HERE"
+    url = "https://discord.com/api/webhooks/1517340239700562022/_aCg9ik-HyQSE50HKMXIplZ7zUp84RnEefYWEN-CDCR_GXRob9d3kRBN94e5qbaGQktb"
     if not url or "webhooks" not in url:
         return
     if phase == "🚨 READY TO SPRING":
