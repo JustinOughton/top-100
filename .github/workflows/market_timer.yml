@@ -44,7 +44,7 @@ jobs:
         # Guards added to prevent crash if data fails to generate on a specific run
         git add active_100_tickers.csv || true
         git add current_ai_rankings.csv || true
-        git add market_dashboard.html || true
+        git add index.html || true
         git add daily_market_close_report.txt || true
         
         # Commit and push changes back into your repository
