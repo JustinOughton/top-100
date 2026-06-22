@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import time
+import sys
 import numpy as np
 import pandas as pd
 import requests
@@ -41,106 +42,16 @@ def calculate_rsi(prices, period=14):
 
 def get_master_universe():
     return [
-        "WULF",
-        "INOD",
-        "SOUN",
-        "QUBT",
-        "ACMR",
-        "POET",
-        "ATOM",
-        "LWLG",
-        "MARA",
-        "RIOT",
-        "CORZ",
-        "VRT",
-        "SMCI",
-        "C3AI",
-        "PATH",
-        "PSTG",
-        "NTAP",
-        "STX",
-        "WDC",
-        "ANET",
-        "JNPR",
-        "CIEN",
-        "EXTR",
-        "LITE",
-        "FN",
-        "CLS",
-        "SANM",
-        "FLEX",
-        "PLAB",
-        "CAMT",
-        "COHR",
-        "DIOD",
-        "MXL",
-        "SGH",
-        "VICR",
-        "AMD",
-        "INTC",
-        "MU",
-        "MRVL",
-        "ADI",
-        "TXN",
-        "MCHP",
-        "NXPI",
-        "ON",
-        "MPWR",
-        "SLAB",
-        "AEHR",
-        "AMKR",
-        "TER",
-        "COGN",
-        "IPG",
-        "FORM",
-        "CREE",
-        "RMBS",
-        "NVDA",
-        "PLTR",
-        "SNOW",
-        "AI",
-        "BBAI",
-        "SERV",
-        "VERI",
-        "CXM",
-        "EGAN",
-        "DT",
-        "NEWR",
-        "SPLK",
-        "CRWD",
-        "NET",
-        "DDOG",
-        "OKTA",
-        "ZS",
-        "DOCU",
-        "MDB",
-        "ESTC",
-        "WK",
-        "S",
-        "ALTR",
-        "CCCS",
-        "UPST",
-        "LYFT",
-        "KTOS",
-        "AVAV",
-        "NNDM",
-        "BKSY",
-        "PL",
-        "RKLB",
-        "ACHR",
-        "JOBY",
-        "OUST",
-        "AEVA",
-        "MVIS",
-        "REKR",
-        "GCT",
-        "ANY",
-        "BITF",
-        "HUT",
-        "MIGI",
-        "CLSK",
-        "SDIG",
-        "BTDR",
+        "WULF", "INOD", "SOUN", "QUBT", "ACMR", "POET", "ATOM", "LWLG", "MARA", "RIOT",
+        "CORZ", "VRT", "SMCI", "C3AI", "PATH", "PSTG", "NTAP", "STX", "WDC", "ANET",
+        "JNPR", "CIEN", "EXTR", "LITE", "FN", "CLS", "SANM", "FLEX", "PLAB", "CAMT",
+        "COHR", "DIOD", "MXL", "SGH", "VICR", "AMD", "INTC", "MU", "MRVL", "ADI",
+        "TXN", "MCHP", "NXPI", "ON", "MPWR", "SLAB", "AEHR", "AMKR", "TER", "COGN",
+        "IPG", "FORM", "CREE", "RMBS", "NVDA", "PLTR", "SNOW", "AI", "BBAI", "SERV",
+        "VERI", "CXM", "EGAN", "DT", "NEWR", "SPLK", "CRWD", "NET", "DDOG", "OKTA",
+        "ZS", "DOCU", "MDB", "ESTC", "WK", "S", "ALTR", "CCCS", "UPST", "LYFT",
+        "KTOS", "AVAV", "NNDM", "BKSY", "PL", "RKLB", "ACHR", "JOBY", "OUST", "AEVA",
+        "MVIS", "REKR", "GCT", "ANY", "BITF", "HUT", "MIGI", "CLSK", "SDIG", "BTDR"
     ]
 
 
@@ -198,13 +109,14 @@ def generate_html_dashboard(df):
     with open(HTML_DASHBOARD_FILE, "w", encoding="utf-8") as f:
         f.write(html_content)
 
+
 def hourly_rank_update():
     if not os.path.exists(TICKER_LIST_FILE):
         rebalance_ticker_universe()
+        
     active_tickers = pd.read_csv(TICKER_LIST_FILE)["Ticker"].tolist()
     valid_data = []
     
-    # Fetch historical data chunks to handle weekends safely
     market_history = yf.download(
         " ".join(active_tickers), period="30d", group_by="ticker", progress=False
     )
@@ -221,8 +133,6 @@ def hourly_rank_update():
             if len(history) < 20:
                 continue
                 
-            # --- WEEKEND DATA PROTECTION GATE ---
-            # If the market is closed and live price is missing (None/0), look at final Friday close
             price = info.get("currentPrice", 0)
             if price is None or price == 0:
                 price = history["Close"].iloc[-1]
@@ -274,14 +184,21 @@ def hourly_rank_update():
             )
         except:
             continue
-            
-    # Force output generation even if live data is blank
     if valid_data:
-        df_output = pd.DataFrame(valid_data).sort_values(
-            by="Risk_Score", ascending=True
-        )
+        df_output = pd.DataFrame(valid_data).sort_values(by="Risk_Score", ascending=False)
         df_output.to_csv(OUTPUT_RANKINGS_FILE, index=False)
         generate_html_dashboard(df_output)
+        
+        for _, row in df_output.iterrows():
+            if row["Trading Phase"] in ["🚨 READY TO SPRING", "🚨 BUY PHASE", "💥 TAKE PROFIT / SELL"]:
+                send_discord_phase_alert(
+                    row["Ticker"],
+                    row["Trading Phase"],
+                    row["Price ($)"],
+                    row["RVOL"],
+                    row["RSI"],
+                    row["Risk_Score"],
+                )
 
 
 def rebalance_ticker_universe():
@@ -320,21 +237,15 @@ def rebalance_ticker_universe():
             )
             
             if rsi_value >= 80.0 or rvol >= 4.0:
-                daily_phase_report.append(
-                    f"→ {ticker:5} | [SELL PHASE]: Overbought momentum peak."
-                )
+                daily_phase_report.append(f"→ {ticker:5} | [SELL PHASE]: Overbought momentum peak.")
             elif price > sma_20 and rvol >= 1.5 and rsi_value < 70.0:
-                daily_phase_report.append(
-                    f"→ {ticker:5} | [BUY PHASE] : Strategic entry build phase."
-                )
+                daily_phase_report.append(f"→ {ticker:5} | [BUY PHASE] : Strategic entry build phase.")
         except:
             continue
             
     df_universe = pd.DataFrame(valid_companies)
     if not df_universe.empty:
-        df_universe = df_universe.sort_values(
-            by="Sorting_Score", ascending=False
-        ).head(100)
+        df_universe = df_universe.sort_values(by="Sorting_Score", ascending=False).head(100)
     df_universe[["Ticker"]].to_csv(TICKER_LIST_FILE, index=False)
     
     with open(DAILY_REPORT_FILE, "w") as f:
@@ -350,26 +261,20 @@ def rebalance_ticker_universe():
 
 
 def send_discord_phase_alert(ticker, phase, price, rvol, rsi, score):
-    url = "https://discord.com"
+    url = "https://discord.com/api/webhooks/1517340239700562022/_aCg9ik-HyQSE50HKMXIplZ7zUp84RnEefYWEN-CDCR_GXRob9d3kRBN94e5qbaGQktb"
+    
     if not url or "webhooks" not in url:
         return
+        
     if phase == "🚨 READY TO SPRING":
-        color, advice = (
-            3066993,
-            "🟢 **COMPRESSION DETECTED**\\nTight momentum boundary breakout possible.",
-        )
+        color, advice = (3066993, "🟢 **COMPRESSION DETECTED**\\nTight momentum breakout possible.")
     elif phase == "🚨 BUY PHASE":
-        color, advice = (
-            16753997,
-            "🟠 **ENTRY POSITION OPEN**\\nBuying pressure confirmed above key limits.",
-        )
+        color, advice = (16753997, "🟠 **ENTRY POSITION OPEN**\\nBuying pressure confirmed above limits.")
     elif phase == "💥 TAKE PROFIT / SELL":
-        color, advice = (
-            16724787,
-            "🔴 **EXHAUSTION PEAK REACHED**\\nLock in profit before baseline settles.",
-        )
+        color, advice = (16724787, "🔴 **EXHAUSTION PEAK REACHED**\\nLock in profit before baseline settles.")
     else:
         return
+        
     payload = {
         "username": "Option C Phase Engine",
         "embeds": [
@@ -377,72 +282,25 @@ def send_discord_phase_alert(ticker, phase, price, rvol, rsi, score):
                 "title": f"📈 PHASE TRANSITION: {ticker} ({phase})",
                 "color": color,
                 "fields": [
-                    {
-                        "name": "Current Price",
-                        "value": f"${price:.2f}",
-                        "inline": True,
-                    },
-                    {
-                        "name": "Risk Score",
-                        "value": f"**{score:.1f}**",
-                        "inline": True,
-                    },
-                    {
-                        "name": "RVOL",
-                        "value": f"{rvol:.2f}x",
-                        "inline": True,
-                    },
-                    {
-                        "name": "14D RSI",
-                        "value": f"{rsi:.1f}",
-                        "inline": True,
-                    },
+                    {"name": "Current Price", "value": f"${price:.2f}", "inline": True},
+                    {"name": "Risk Score", "value": f"**{score:.1f}**", "inline": True},
+                    {"name": "RVOL", "value": f"{rvol:.2f}x", "inline": True},
+                    {"name": "14D RSI", "value": f"{rsi:.1f}", "inline": True},
                     {"name": "Execution Profile Advice", "value": advice},
                 ],
             }
         ],
     }
     try:
-        requests.post(
-            url,
-            data=json.dumps(payload),
-            headers={"Content-Type": "application/json"},
-            timeout=10,
-        )
+        requests.post(url, data=json.dumps(payload), headers={"Content-Type": "application/json"}, timeout=10)
     except:
         pass
 
 
-_old_hourly = hourly_rank_update
-
-
-def hourly_rank_update():
-    _old_hourly()
-    if os.path.exists(OUTPUT_RANKINGS_FILE):
-        try:
-            df = pd.read_csv(OUTPUT_RANKINGS_FILE)
-            for _, row in df.iterrows():
-                if row["Trading Phase"] in [
-                    "🚨 READY TO SPRING",
-                    "🚨 BUY PHASE",
-                    "💥 TAKE PROFIT / SELL",
-                ]:
-                    send_discord_phase_alert(
-                        row["Ticker"],
-                        row["Trading Phase"],
-                        row["Price ($)"],
-                        row["RVOL"],
-                        row["RSI"],
-                        row["Risk_Score"],
-                    )
-        except:
-            pass
-
-
 if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) > 1 and sys.argv == "--rebalance":
+    if len(sys.argv) > 1 and "--rebalance" in sys.argv:
+        print("🚀 Executing Task 1: Force Universe Rebalance Pipeline...")
         rebalance_ticker_universe()
     else:
+        print("📈 Executing Task 2: Hourly Cloud Matrix Refresh Engine...")
         hourly_rank_update()
