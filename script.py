@@ -125,7 +125,6 @@ def hourly_rank_update():
             stock = yf.Ticker(ticker)
             info = stock.info
             
-            # Target fallback history dataframe if market is closed
             if ticker in market_history.columns.levels:
                 history = market_history[ticker].dropna()
             else:
@@ -206,18 +205,26 @@ def hourly_rank_update():
 def rebalance_ticker_universe():
     master_list = get_master_universe()
     valid_companies, daily_phase_report = [], []
-    market_history = yf.download(
-        " ".join(master_list), period="30d", group_by="ticker", progress=False
-    )
+    
+    try:
+        market_history = yf.download(
+            " ".join(master_list), period="30d", group_by="ticker", progress=False
+        )
+    except:
+        market_history = None
+
     for ticker in master_list:
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
             
-            if ticker in market_history.columns.levels:
+            if market_history is not None and ticker in market_history.columns.levels:
                 history = market_history[ticker].dropna()
             else:
                 history = stock.history(period="30d")
+                
+            if history.empty:
+                continue
                 
             price = info.get("currentPrice", 0)
             if price is None or price == 0:
@@ -249,12 +256,16 @@ def rebalance_ticker_universe():
         except:
             continue
             
-    df_universe = pd.DataFrame(valid_companies)
-    if not df_universe.empty:
+    # --- CRITICAL BLANK DATA PROTECTION GATE ---
+    if not valid_companies:
+        print("⚠️ Data pull failed completely. Using emergency master list backup.")
+        df_universe = pd.DataFrame([{"Ticker": t} for t in master_list])
+    else:
+        df_universe = pd.DataFrame(valid_companies)
         df_universe = df_universe.sort_values(by="Sorting_Score", ascending=False).head(100)
+        
     df_universe[["Ticker"]].to_csv(TICKER_LIST_FILE, index=False)
     
-    # Using specific overwrite guard context to reset text cleanly
     with open(DAILY_REPORT_FILE, "w", encoding="utf-8") as f:
         f.write(
             "=================================================================\n"
