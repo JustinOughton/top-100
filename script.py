@@ -15,7 +15,6 @@ HTML_DASHBOARD_FILE = "market_dashboard.html"
 DAILY_REPORT_FILE = "daily_market_close_report.txt"
 MEMORY_FILE = "market_state_memory.json"
 
-
 def calculate_rsi(prices, period=14):
     if len(prices) < period + 1:
         return 50.0
