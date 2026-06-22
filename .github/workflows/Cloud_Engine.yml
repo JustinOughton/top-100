@@ -3,8 +3,13 @@ name: Option C Market Cloud Engine
 on:
   schedule:
     - cron: '0 14-21 * * 1-5'
-    - cron: '30 21 * * 1-5'
+    - cron: '30 19 * * 1-5'
   workflow_dispatch:
+    inputs:
+      force_sync:
+        description: 'Set to true to force populate the historical memory JSON cache file'
+        required: false
+        default: 'false'
 
 jobs:
   run-market-engine:
@@ -24,29 +29,32 @@ jobs:
     - name: Install Data Libraries
       run: pip install pandas yfinance numpy requests
 
-    # Task 1: Clean and update the underlying text report & active ticker pool
+    # Conditional Gate: If you toggle 'force_sync' to true, run the standalone history collector
+    - name: Force Historical Cache Sync
+      if: ${{ github.event.inputs.force_sync == 'true' }}
+      run: python force_cache_sync.py
+
+    # Standard loop tasking runs if force_sync is left as false
     - name: Force Universe Rebalance Setup
+      if: ${{ github.event.inputs.force_sync != 'true' }}
       run: python script.py --rebalance
 
-    # Task 2: Build fresh HTML dashboards and rank matrices 
     - name: Run Matrix Update
+      if: ${{ github.event.inputs.force_sync != 'true' }}
       run: python script.py
 
-    # Task 3: Permanently write all new and replaced files back to your GitHub files tab
     - name: Save and Commit Updated Outputs
       run: |
         git config --global user.name "Option-C-Cloud-Bot"
         git config --global user.email "bot@optionc.internal"
         
-        # Pull any changes to stay in sync safely
         git pull origin main --rebase || true
         
-        # Guards added to prevent crash if data fails to generate on a specific run
+        git add market_state_memory.json || true
         git add active_100_tickers.csv || true
         git add current_ai_rankings.csv || true
         git add index.html || true
         git add daily_market_close_report.txt || true
         
-        # Commit and push changes back into your repository
-        git commit -m "Automated Sync: Matrix, Dashboard, and Close Report live" || true
+        git commit -m "Automated Sync Update" || true
         git push origin main || true
