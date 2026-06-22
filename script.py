@@ -13,6 +13,7 @@ TICKER_LIST_FILE = "active_100_tickers.csv"
 OUTPUT_RANKINGS_FILE = "current_ai_rankings.csv"
 HTML_DASHBOARD_FILE = "market_dashboard.html"
 DAILY_REPORT_FILE = "daily_market_close_report.txt"
+MEMORY_FILE = "market_state_memory.json"
 
 
 def calculate_rsi(prices, period=14):
@@ -55,8 +56,26 @@ def get_master_universe():
     ]
 
 
+def load_memory_cache():
+    if os.path.exists(MEMORY_FILE):
+        try:
+            with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+
+def save_memory_cache(cache_data):
+    try:
+        with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache_data, f, indent=4)
+    except:
+        pass
+
+
 def generate_html_dashboard(df):
-    t_stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    t_stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
     table_rows = ""
     for idx, row in df.iterrows():
         phase = row["Trading Phase"]
@@ -79,7 +98,8 @@ def generate_html_dashboard(df):
         "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>Option C Live</title><style>"
         "body{{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background-color:#121212;color:#fff;margin:10px;}}"
         ".container{{width:100%;max-width:1100px;margin:0 auto;}}"
-        "h2{{text-align:center;text-transform:uppercase;letter-spacing:1px;}}"
+        "h2{{text-align:center;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;}}"
+        ".timestamp{{text-align:center;color:#888;font-size:12px;margin-bottom:15px;font-family:monospace;}}"
         ".clock-panel{{display:flex;justify-content:space-around;background-color:#000;border:1px solid #333;padding:15px;margin-bottom:20px;border-radius:6px;text-align:center;}}"
         ".clock-box{{flex:1;}}.clock-label{{font-size:11px;color:#888;text-transform:uppercase;margin-bottom:4px;}}.clock-time{{font-size:20px;font-weight:bold;font-family:monospace;}}"
         "table{{width:100%;border-collapse:collapse;background-color:#fff;color:#000;font-size:14px;}}"
@@ -90,7 +110,8 @@ def generate_html_dashboard(df):
         ".signal-orange-highlight{{background-color:#ffb84d!important;color:#000!important;font-weight:bold;}}"
         ".signal-red-highlight{{background-color:#ff3333!important;color:#000!important;font-weight:bold;}}"
         ".badge{{padding:4px 8px;border-radius:4px;font-size:11px;font-weight:bold;display:inline-block;text-transform:uppercase;}}"
-        "</style></head><body><div class='container'><h2>AI Processing Leaderboard</h2><div class='clock-panel'>"
+        "</style></head><body><div class='container'><h2>AI Processing Leaderboard</h2>"
+        f"<div class='timestamp'>ENGINE DATA LAST SYNCED: {t_stamp}</div><div class='clock-panel'>"
         "<div class='clock-box'><div class='clock-label'>Local Sydney Time (AEST)</div><div class='clock-time' id='aest-clock'>--:--:--</div></div>"
         "<div class='clock-box' style='border-left:1px solid #222;'><div class='clock-label' id='countdown-label'>US Market Clock</div><div class='clock-time' id='countdown-clock'>--:--:--</div></div>"
         "</div><table><thead><tr><th>Node Ticker</th><th>Price Field</th><th>Short Float</th><th>DTC Window</th><th>RVOL Ratio</th><th>14D RSI</th><th>Computed Risk Score</th><th>Current Strategy Phase</th></tr></thead><tbody>"
@@ -99,8 +120,10 @@ def generate_html_dashboard(df):
         "function updateClocks(){{"
         "let e=new Date();document.getElementById('aest-clock').innerText=e.toLocaleTimeString('en-AU',{{timeZone:'Australia/Sydney',hour12:false}});"
         "let t=e.toLocaleString('en-US',{{timeZone:'America/New_York'}}),n=new Date(t),r=n.getDay(),o=n.getHours(),a=n.getMinutes(),l=n.getSeconds(),i=60*o+a,C=570,c=960,u=0===r||6===r,d=!u&&i>=C&&i<c,s=document.getElementById('countdown-label'),m=document.getElementById('countdown-clock');"
-        "if(d){{s.innerText='Time Until Close (Market Open)',s.style.color='#00cc44',m.style.color='#00cc44';let g=60*(c-i)-l;m.innerText=formatTimeDuration(g)}}"
-        "else{{s.innerText='Time Until Next Open (Market Closed)',s.style.color='#ff3333',m.style.color='#ff3333';let f=new Date(t);f.setHours(9,30,0,0),i>=c&&f.setDate(f.getDate()+1);while(0===f.getDay()||6===f.getDay())f.setDate(f.getDate()+1);"
+        "if(d){{s.innerText='Market Status: OPEN (Time Until Close)',s.style.color='#00cc44',m.style.color='#00cc44';"
+        "let g=60*(c-i)-l;m.innerText=formatTimeDuration(g)}}"
+        "else{{s.innerText='Market Status: CLOSED (Time Until Next Open)',s.style.color='#ff3333',m.style.color='#ff3333';"
+        "let f=new Date(t);f.setHours(9,30,0,0),i>=c&&f.setDate(f.getDate()+1);while(0===f.getDay()||6===f.getDay())f.setDate(f.getDate()+1);"
         "let T=f-new Date(e.toLocaleString('en-US',{{timeZone:'America/New_York'}}));m.innerText=formatTimeDuration(Math.floor(T/1000))}}"
         "}}function formatTimeDuration(e){{let t=Math.floor(e/3600), Richmond=Math.floor(e%3600/60),n=e%60;return[t.toString().padStart(2,'0'),Richmond.toString().padStart(2,'0'),n.toString().padStart(2,'0')].join(':')}}"
         "setInterval(updateClocks,1000);updateClocks();"
@@ -115,6 +138,7 @@ def hourly_rank_update():
         
     active_tickers = pd.read_csv(TICKER_LIST_FILE)["Ticker"].tolist()
     valid_data = []
+    memory_cache = load_memory_cache()
     
     market_history = yf.download(
         " ".join(active_tickers), period="30d", group_by="ticker", progress=False
@@ -130,25 +154,39 @@ def hourly_rank_update():
             else:
                 history = stock.history(period="30d")
                 
-            if len(history) < 20:
+            if history.empty and ticker not in memory_cache:
                 continue
                 
-            price = info.get("currentPrice", 0)
+            # Historical backup for Price fields
+            price = info.get("currentPrice") if info else None
             if price is None or price == 0:
-                price = history["Close"].iloc[-1]
+                price = history["Close"].iloc[-1] if not history.empty else memory_cache[ticker]["Price ($)"]
                 
-            short_pct = info.get("shortPercentOfFloat", 0) * 100
-            dtc = info.get("shortRatio", 0)
-            close_prices = history["Close"].to_numpy()
-            
-            current_volume = info.get("volume", history["Volume"].iloc[-1])
-            if current_volume is None or current_volume == 0:
-                current_volume = history["Volume"].iloc[-1]
+            # Smart Fallback Memory Integration for short float metrics
+            short_pct = info.get("shortPercentOfFloat") if info else None
+            if short_pct is not None:
+                short_pct = short_pct * 100
+            else:
+                short_pct = memory_cache.get(ticker, {}).get("Short Interest %", 5.0)
                 
-            avg_volume = info.get("averageVolume", history["Volume"].mean())
-            rvol = current_volume / avg_volume if avg_volume > 0 else 1.0
-            rsi_value = calculate_rsi(close_prices, period=14)
-            sma_20 = history["Close"].tail(20).mean()
+            dtc = info.get("shortRatio") if info else None
+            if dtc is None:
+                dtc = memory_cache.get(ticker, {}).get("Days to Cover", 1.5)
+                
+            if not history.empty:
+                close_prices = history["Close"].to_numpy()
+                current_volume = info.get("volume", history["Volume"].iloc[-1]) if info else history["Volume"].iloc[-1]
+                if current_volume is None or current_volume == 0:
+                    current_volume = history["Volume"].iloc[-1]
+                avg_volume = history["Volume"].mean()
+                rvol = current_volume / avg_volume if (avg_volume and avg_volume > 0) else 1.0
+                rsi_value = calculate_rsi(close_prices, period=14)
+                sma_20 = history["Close"].tail(20).mean()
+            else:
+                # Emergency hard swap down to historical matrix cache frame
+                rvol = memory_cache.get(ticker, {}).get("RVOL", 1.0)
+                rsi_value = memory_cache.get(ticker, {}).get("RSI", 50.0)
+                sma_20 = price
 
             base_risk = short_pct + (dtc * 2.0)
             if price > sma_20:
@@ -158,34 +196,30 @@ def hourly_rank_update():
 
             if rsi_value >= 80.0 or rvol >= 4.0:
                 trading_phase = "💥 TAKE PROFIT / SELL"
-            elif (
-                price > sma_20
-                and rvol >= 1.8
-                and 45.0 <= rsi_value <= 65.0
-                and dtc > 5.0
-            ):
+            elif (price > sma_20 and rvol >= 1.8 and 45.0 <= rsi_value <= 65.0 and dtc > 5.0):
                 trading_phase = "🚨 READY TO SPRING"
             elif price > sma_20 and rvol >= 1.5 and rsi_value < 70.0:
                 trading_phase = "🚨 BUY PHASE"
             else:
                 trading_phase = "HOLD / ACCUMULATE"
 
-            valid_data.append(
-                {
-                    "Ticker": ticker,
-                    "Price ($)": price,
-                    "Short Interest %": short_pct,
-                    "Days to Cover": dtc,
-                    "RVOL": rvol,
-                    "RSI": rsi_value,
-                    "Trading Phase": trading_phase,
-                    "Risk_Score": base_risk,
-                }
-            )
+            ticker_metrics = {
+                "Ticker": ticker,
+                "Price ($)": price,
+                "Short Interest %": short_pct,
+                "Days to Cover": dtc,
+                "RVOL": rvol,
+                "RSI": rsi_value,
+                "Trading Phase": trading_phase,
+                "Risk_Score": base_risk,
+            }
+            valid_data.append(ticker_metrics)
+            memory_cache[ticker] = ticker_metrics  # Update persistent cache snapshot
         except:
             continue
 
     if valid_data:
+        save_memory_cache(memory_cache)
         df_output = pd.DataFrame(valid_data).sort_values(by="Risk_Score", ascending=False)
         df_output.to_csv(OUTPUT_RANKINGS_FILE, index=False)
         generate_html_dashboard(df_output)
@@ -205,11 +239,10 @@ def hourly_rank_update():
 def rebalance_ticker_universe():
     master_list = get_master_universe()
     valid_companies, daily_phase_report = [], []
+    memory_cache = load_memory_cache()
     
     try:
-        market_history = yf.download(
-            " ".join(master_list), period="30d", group_by="ticker", progress=False
-        )
+        market_history = yf.download(" ".join(master_list), period="30d", group_by="ticker", progress=False)
     except:
         market_history = None
 
@@ -223,31 +256,37 @@ def rebalance_ticker_universe():
             else:
                 history = stock.history(period="30d")
                 
-            if history.empty:
+            if history.empty and ticker not in memory_cache:
                 continue
                 
-            price = info.get("currentPrice", 0)
+            price = info.get("currentPrice") if info else None
             if price is None or price == 0:
-                price = history["Close"].iloc[-1]
+                price = history["Close"].iloc[-1] if not history.empty else memory_cache[ticker]["Price ($)"]
                 
             if price == 0 or price > MAX_STOCK_PRICE:
                 continue
                 
-            short_pct = info.get("shortPercentOfFloat", 0) * 100
-            dtc = info.get("shortRatio", 0)
-            close_prices = history["Close"].to_numpy()
-            
-            current_volume = info.get("volume", history["Volume"].iloc[-1])
-            if current_volume is None or current_volume == 0:
-                current_volume = history["Volume"].iloc[-1]
+            short_pct = info.get("shortPercentOfFloat") if info else None
+            if short_pct is not None:
+                short_pct = short_pct * 100
+            else:
+                short_pct = memory_cache.get(ticker, {}).get("Short Interest %", 5.0)
                 
-            rvol = current_volume / history["Volume"].mean() if history["Volume"].mean() > 0 else 1.0
-            rsi_value = calculate_rsi(close_prices, period=14)
-            sma_20 = history["Close"].tail(20).mean()
+            dtc = info.get("shortRatio") if info else None
+            if dtc is None:
+                dtc = memory_cache.get(ticker, {}).get("Days to Cover", 1.5)
+                
+            if not history.empty:
+                close_prices = history["Close"].to_numpy()
+                current_volume = info.get("volume", history["Volume"].iloc[-1]) if info else history["Volume"].iloc[-1]
+                rvol = current_volume / history["Volume"].mean() if history["Volume"].mean() > 0 else 1.0
+                rsi_value = calculate_rsi(close_prices, period=14)
+                sma_20 = history["Close"].tail(20).mean()
+            else:
+                rvol = memory_cache.get(ticker, {}).get("RVOL", 1.0)
+                rsi_value = memory_cache.get(ticker, {}).get("RSI", 50.0)
             
-            valid_companies.append(
-                {"Ticker": ticker, "Sorting_Score": short_pct * dtc}
-            )
+            valid_companies.append({"Ticker": ticker, "Sorting_Score": short_pct * dtc})
             
             if rsi_value >= 80.0 or rvol >= 4.0:
                 daily_phase_report.append(f"→ {ticker:5} | [SELL PHASE]: Overbought peak.")
@@ -256,9 +295,7 @@ def rebalance_ticker_universe():
         except:
             continue
             
-    # --- CRITICAL BLANK DATA PROTECTION GATE ---
     if not valid_companies:
-        print("⚠️ Data pull failed completely. Using emergency master list backup.")
         df_universe = pd.DataFrame([{"Ticker": t} for t in master_list])
     else:
         df_universe = pd.DataFrame(valid_companies)
@@ -276,13 +313,30 @@ def rebalance_ticker_universe():
             f.write("\n".join(daily_phase_report))
         else:
             f.write("No monitored nodes triggered actionable close conditions.")
+            
+    send_discord_text_report()
+
+
+def send_discord_text_report():
+    url = "PLACE WEBHOOK HERE"
+    if not url or "webhooks" not in url or not os.path.exists(DAILY_REPORT_FILE):
+        return
+    with open(DAILY_REPORT_FILE, "r", encoding="utf-8") as f:
+        content = f.read()
+    payload = {
+        "username": "Option C Closing Engine",
+        "content": f"¼📝 **New Closing Action Report Generated**\n```text\n{content}\n```"
+    }
+    try:
+        requests.post(url, data=json.dumps(payload), headers={"Content-Type": "application/json"}, timeout=10)
+    except:
+        pass
 
 
 def send_discord_phase_alert(ticker, phase, price, rvol, rsi, score):
     url = "PLACE WEBHOOK HERE"
     if not url or "webhooks" not in url:
         return
-        
     if phase == "🚨 READY TO SPRING":
         color, advice = (3066993, "🟢 **COMPRESSION DETECTED**\\nTight breakout pattern forming.")
     elif phase == "🚨 BUY PHASE":
@@ -291,7 +345,6 @@ def send_discord_phase_alert(ticker, phase, price, rvol, rsi, score):
         color, advice = (16724787, "🔴 **EXHAUSTION PEAK REACHED**\\nLock in profit targets.")
     else:
         return
-        
     payload = {
         "username": "Option C Phase Engine",
         "embeds": [
