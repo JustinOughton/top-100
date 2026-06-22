@@ -11,7 +11,7 @@ import yfinance as yf
 MAX_STOCK_PRICE = 150.0
 TICKER_LIST_FILE = "active_100_tickers.csv"
 OUTPUT_RANKINGS_FILE = "current_ai_rankings.csv"
-HTML_DASHBOARD_FILE = "market_dashboard.html"
+HTML_DASHBOARD_FILE = "index.html"
 DAILY_REPORT_FILE = "daily_market_close_report.txt"
 MEMORY_FILE = "market_state_memory.json"
 
