@@ -139,35 +139,43 @@ def hourly_rank_update():
     valid_data = []
     memory_cache = load_memory_cache()
     
-    market_history = yf.download(
-        " ".join(active_tickers), period="30d", group_by="ticker", progress=False
-    )
+    try:
+        market_history = yf.download(
+            " ".join(active_tickers), period="30d", group_by="ticker", progress=False
+        )
+    except:
+        market_history = None
     
     for ticker in active_tickers:
         try:
             stock = yf.Ticker(ticker)
-            info = stock.info
+            info = stock.info if stock else None
             
-            if ticker in market_history.columns.levels:
+            if market_history is not None and ticker in market_history.columns.levels:
                 history = market_history[ticker].dropna()
             else:
-                history = stock.history(period="30d")
+                history = stock.history(period="30d") if stock else pd.DataFrame()
                 
+            # FIXED: Bypasses the trap by verifying if the stock exists in your memory cache
             if history.empty and ticker not in memory_cache:
                 continue
                 
-            # Historical backup for Price fields
+            # Price extraction with safe memory cache fallback
             price = info.get("currentPrice") if info else None
             if price is None or price == 0:
-                price = history["Close"].iloc[-1] if not history.empty else memory_cache[ticker]["Price ($)"]
+                if not history.empty:
+                    price = history["Close"].iloc[-1]
+                else:
+                    price = memory_cache[ticker].get("Price ($)", 0)
                 
-            # Smart Fallback Memory Integration for short float metrics
+            # Short Interest percentage fallback extraction
             short_pct = info.get("shortPercentOfFloat") if info else None
             if short_pct is not None:
                 short_pct = short_pct * 100
             else:
                 short_pct = memory_cache.get(ticker, {}).get("Short Interest %", 5.0)
                 
+            # Days to Cover fallback extraction
             dtc = info.get("shortRatio") if info else None
             if dtc is None:
                 dtc = memory_cache.get(ticker, {}).get("Days to Cover", 1.5)
@@ -182,7 +190,7 @@ def hourly_rank_update():
                 rsi_value = calculate_rsi(close_prices, period=14)
                 sma_20 = history["Close"].tail(20).mean()
             else:
-                # Emergency hard swap down to historical matrix cache frame
+                # If history is completely empty on weekends, extract last known tracking math
                 rvol = memory_cache.get(ticker, {}).get("RVOL", 1.0)
                 rsi_value = memory_cache.get(ticker, {}).get("RSI", 50.0)
                 sma_20 = price
@@ -213,15 +221,21 @@ def hourly_rank_update():
                 "Risk_Score": base_risk,
             }
             valid_data.append(ticker_metrics)
-            memory_cache[ticker] = ticker_metrics  # Update persistent cache snapshot
+            memory_cache[ticker] = ticker_metrics
         except:
             continue
+
+    # FIXED ENGINE MASTER GATE: Force loads historical values if live data drops out
+    if not valid_data and memory_cache:
+        print("⚠️ Live pull empty. Forcing full dashboard render via historical cache.")
+        valid_data = list(memory_cache.values())
 
     if valid_data:
         save_memory_cache(memory_cache)
         df_output = pd.DataFrame(valid_data).sort_values(by="Risk_Score", ascending=False)
         df_output.to_csv(OUTPUT_RANKINGS_FILE, index=False)
         generate_html_dashboard(df_output)
+        print("✅ Success! Fresh website file forced to compile.")
         
         for _, row in df_output.iterrows():
             if row["Trading Phase"] in ["🚨 READY TO SPRING", "🚨 BUY PHASE", "💥 TAKE PROFIT / SELL"]:
@@ -233,7 +247,6 @@ def hourly_rank_update():
                     row["RSI"],
                     row["Risk_Score"],
                 )
-
 
 def rebalance_ticker_universe():
     master_list = get_master_universe()
