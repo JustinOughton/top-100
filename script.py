@@ -109,7 +109,6 @@ def generate_html_dashboard(df):
     with open(HTML_DASHBOARD_FILE, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-
 def hourly_rank_update():
     if not os.path.exists(TICKER_LIST_FILE):
         rebalance_ticker_universe()
@@ -125,11 +124,13 @@ def hourly_rank_update():
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
-            history = (
-                market_history[ticker].dropna()
-                if ticker in market_history.columns.levels
-                else stock.history(period="30d")
-            )
+            
+            # Target fallback history dataframe if market is closed
+            if ticker in market_history.columns.levels:
+                history = market_history[ticker].dropna()
+            else:
+                history = stock.history(period="30d")
+                
             if len(history) < 20:
                 continue
                 
@@ -184,6 +185,7 @@ def hourly_rank_update():
             )
         except:
             continue
+
     if valid_data:
         df_output = pd.DataFrame(valid_data).sort_values(by="Risk_Score", ascending=False)
         df_output.to_csv(OUTPUT_RANKINGS_FILE, index=False)
@@ -211,8 +213,12 @@ def rebalance_ticker_universe():
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
-            history = market_history[ticker].dropna()
             
+            if ticker in market_history.columns.levels:
+                history = market_history[ticker].dropna()
+            else:
+                history = stock.history(period="30d")
+                
             price = info.get("currentPrice", 0)
             if price is None or price == 0:
                 price = history["Close"].iloc[-1]
@@ -228,7 +234,7 @@ def rebalance_ticker_universe():
             if current_volume is None or current_volume == 0:
                 current_volume = history["Volume"].iloc[-1]
                 
-            rvol = current_volume / history["Volume"].mean()
+            rvol = current_volume / history["Volume"].mean() if history["Volume"].mean() > 0 else 1.0
             rsi_value = calculate_rsi(close_prices, period=14)
             sma_20 = history["Close"].tail(20).mean()
             
@@ -237,9 +243,9 @@ def rebalance_ticker_universe():
             )
             
             if rsi_value >= 80.0 or rvol >= 4.0:
-                daily_phase_report.append(f"→ {ticker:5} | [SELL PHASE]: Overbought momentum peak.")
+                daily_phase_report.append(f"→ {ticker:5} | [SELL PHASE]: Overbought peak.")
             elif price > sma_20 and rvol >= 1.5 and rsi_value < 70.0:
-                daily_phase_report.append(f"→ {ticker:5} | [BUY PHASE] : Strategic entry build phase.")
+                daily_phase_report.append(f"→ {ticker:5} | [BUY PHASE] : Strategic entry setup.")
         except:
             continue
             
@@ -248,7 +254,8 @@ def rebalance_ticker_universe():
         df_universe = df_universe.sort_values(by="Sorting_Score", ascending=False).head(100)
     df_universe[["Ticker"]].to_csv(TICKER_LIST_FILE, index=False)
     
-    with open(DAILY_REPORT_FILE, "w") as f:
+    # Using specific overwrite guard context to reset text cleanly
+    with open(DAILY_REPORT_FILE, "w", encoding="utf-8") as f:
         f.write(
             "=================================================================\n"
             "   OPTION C DAILY SUMMARY CLOSING ENGINE ACTION REPORT\n"
@@ -261,17 +268,16 @@ def rebalance_ticker_universe():
 
 
 def send_discord_phase_alert(ticker, phase, price, rvol, rsi, score):
-    url = "https://discord.com/api/webhooks/1517340239700562022/_aCg9ik-HyQSE50HKMXIplZ7zUp84RnEefYWEN-CDCR_GXRob9d3kRBN94e5qbaGQktb"
-    
+    url = "PLACE WEBHOOK HERE"
     if not url or "webhooks" not in url:
         return
         
     if phase == "🚨 READY TO SPRING":
-        color, advice = (3066993, "🟢 **COMPRESSION DETECTED**\\nTight momentum breakout possible.")
+        color, advice = (3066993, "🟢 **COMPRESSION DETECTED**\\nTight breakout pattern forming.")
     elif phase == "🚨 BUY PHASE":
-        color, advice = (16753997, "🟠 **ENTRY POSITION OPEN**\\nBuying pressure confirmed above limits.")
+        color, advice = (16753997, "🟠 **ENTRY POSITION OPEN**\\nBuying pressure is scaling up.")
     elif phase == "💥 TAKE PROFIT / SELL":
-        color, advice = (16724787, "🔴 **EXHAUSTION PEAK REACHED**\\nLock in profit before baseline settles.")
+        color, advice = (16724787, "🔴 **EXHAUSTION PEAK REACHED**\\nLock in profit targets.")
     else:
         return
         
