@@ -38,13 +38,15 @@ jobs:
         git config --global user.name "Option-C-Cloud-Bot"
         git config --global user.email "bot@optionc.internal"
         
-        # Pull any changes to stay in sync
+        # Pull any changes to stay in sync safely
         git pull origin main --rebase || true
         
-        # Stage the brand new HTML, text report, and CSV files
-        git add active_100_tickers.csv current_ai_rankings.csv market_dashboard.html daily_market_close_report.txt
+        # Guards added to prevent crash if data fails to generate on a specific run
+        git add active_100_tickers.csv || true
+        git add current_ai_rankings.csv || true
+        git add market_dashboard.html || true
+        git add daily_market_close_report.txt || true
         
         # Commit and push changes back into your repository
         git commit -m "Automated Sync: Matrix, Dashboard, and Close Report live" || true
         git push origin main || true
-
